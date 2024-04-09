@@ -1808,6 +1808,35 @@ static int rtpstream_setsocketoptions(int sock)
     return 1; /* success */
 }
 
+void print_sockaddr_storage(const struct sockaddr_storage *addr_storage) {
+    char address_string[INET6_ADDRSTRLEN]; // Assez grand pour IPv6
+    int port = 0;
+
+    // Vérifie la famille d'adresses et traite en conséquence
+    if (addr_storage->ss_family == AF_INET) {
+        // Pour IPv4
+        struct sockaddr_in *addr = (struct sockaddr_in *)addr_storage;
+        inet_ntop(AF_INET, &addr->sin_addr, address_string, sizeof(address_string));
+        port = ntohs(addr->sin_port);
+        WARNING("Sipp IPv4 Address: %s, Port: %d\n", address_string, port);
+    } else if (addr_storage->ss_family == AF_INET6) {
+        // Pour IPv6
+        struct sockaddr_in6 *addr = (struct sockaddr_in6 *)addr_storage;
+        inet_ntop(AF_INET6, &addr->sin6_addr, address_string, sizeof(address_string));
+        port = ntohs(addr->sin6_port);
+        WARNING("Sipp IPv6 Address: %s, Port: %d\n", address_string, port);
+    } else {
+        WARNING("Unknown address family.\n");
+    }
+}
+
+void print_sockaddr_in(const struct sockaddr_in *addr) {
+    char *ip = inet_ntoa(addr->sin_addr); // Convertit l'adresse IP en chaîne de caractères
+    int port = ntohs(addr->sin_port); // Convertit le numéro de port en ordre des octets hôte
+
+    printf("Custo IPv4 Address: %s, Port: %d\n", ip, port);
+}
+
 /* code checked */
 static int rtpstream_get_localport(int* rtpsocket, int* rtcpsocket)
 {
@@ -1851,10 +1880,43 @@ static int rtpstream_get_localport(int* rtpsocket, int* rtcpsocket)
             next_rtp_port = min_rtp_port;
         }
 
+        // -> DEBUG
+        // Création d'une structure socket
+        int sockfd;
+        struct sockaddr_in addr;
+        sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        if (sockfd == -1) {
+            WARNING("socket creation failed\n");
+            return 0;
+        }
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_ANY); // Bind to any address
+        addr.sin_port = htons(port_number); // Port number must be in network byte order
+        print_sockaddr_in(&addr);
+        // <- DEBUG
+
         sockaddr_update_port(&address, port_number);
-        if (::bind(*rtpsocket, (sockaddr*)&address,
+
+        // DEBUG : Affichage de la structure socket de Sipp
+        print_sockaddr_storage(&address);
+
+/*      if (::bind(*rtpsocket, (sockaddr*)&address,
                    sizeof(address)) == 0) {
             break;
+        }
+ */
+        // DEBUG
+        // KO avec la structure Sipp
+        //if (::bind(*rtpsocket, (sockaddr*)&address, sizeof(address)) == 0) {
+        // OK avec la structure 
+        if (::bind(*rtpsocket, (sockaddr*)&address, sizeof(struct sockaddr_in)) == 0) {
+            // Si bind réussit, sortir de la boucle
+            break;
+        } else {
+            //
+            // Si bind échoue, afficher l'erreur
+            WARNING("Bind error: %s\n", strerror(errno));
         }
     }
 
